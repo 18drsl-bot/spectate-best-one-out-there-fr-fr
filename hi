@@ -136,11 +136,16 @@ local function getFilteredPlayers()
 	return list
 end
 
--- Find player matching typed string (case-insensitive partial search)
+-- Find player matching typed string (case-insensitive anywhere search)
 local function findPlayer(nameInput)
 	nameInput = string.lower(nameInput)
+	if nameInput == "" then return nil end
+	
 	for _, p in ipairs(getFilteredPlayers()) do
-		if string.sub(string.lower(p.Name), 1, #nameInput) == nameInput or string.sub(string.lower(p.DisplayName), 1, #nameInput) == nameInput then
+		local username = string.lower(p.Name)
+		local displayName = string.lower(p.DisplayName)
+		
+		if string.find(username, nameInput, 1, true) or string.find(displayName, nameInput, 1, true) then
 			return p
 		end
 	end
