@@ -6,6 +6,11 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
+-- Remove existing SpectateGuiHub if it already exists (prevents duplicates on re-execution)
+if playerGui:FindFirstChild("SpectateGuiHub") then
+	playerGui.SpectateGuiHub:Destroy()
+end
+
 -- Create the ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpectateGuiHub"
