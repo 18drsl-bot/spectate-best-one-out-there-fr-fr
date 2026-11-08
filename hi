@@ -1,36 +1,39 @@
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
--- Remove existing SpectateGuiHub if it already exists (prevents duplicates on re-execution)
-if playerGui:FindFirstChild("SpectateGuiHub") then
-	playerGui.SpectateGuiHub:Destroy()
+-- Remove existing GUI
+local oldGui = CoreGui:FindFirstChild("SpectateGuiHub")
+if oldGui then
+    oldGui:Destroy()
 end
 
--- Create the ScreenGui
+-- Create ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpectateGuiHub"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
+screenGui.Parent = CoreGui
 
--- Create the Outer Window Frame (Container)
+-- Main Window
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 240, 0, 215)
 mainFrame.Position = UDim2.new(0.5, -120, 0.4, -107)
 mainFrame.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
 mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
 mainFrame.Parent = screenGui
 
 local frameCorner = Instance.new("UICorner")
 frameCorner.CornerRadius = UDim.new(0, 8)
 frameCorner.Parent = mainFrame
 
--- Title Bar for the Window
+-- Title
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "TitleLabel"
 titleLabel.Size = UDim2.new(1, 0, 0, 30)
@@ -47,7 +50,7 @@ local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 8)
 titleCorner.Parent = titleLabel
 
--- TextBox for typing player name (clears on focus)
+-- Player Name Input
 local nameBox = Instance.new("TextBox")
 nameBox.Name = "NameBox"
 nameBox.Size = UDim2.new(1, -20, 0, 28)
@@ -65,39 +68,44 @@ local boxCorner = Instance.new("UICorner")
 boxCorner.CornerRadius = UDim.new(0, 6)
 boxCorner.Parent = nameBox
 
--- Spectate Action Button (Blue)
-local spectateButton = Instance.new("TextButton")
-spectateButton.Name = "SpectateButton"
-spectateButton.Size = UDim2.new(1, -20, 0, 28)
-spectateButton.Position = UDim2.new(0, 10, 0, 71)
-spectateButton.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
-spectateButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-spectateButton.TextSize = 14
-spectateButton.Font = Enum.Font.SourceSansBold
-spectateButton.Text = "Spectate Name"
-spectateButton.Parent = mainFrame
+-- Button Helper
+local function createButton(name, text, y, height, color)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(1, -20, 0, height)
+    button.Position = UDim2.new(0, 10, 0, y)
+    button.BackgroundColor3 = color
+    button.BorderSizePixel = 0
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+    button.Font = Enum.Font.SourceSansBold
+    button.Text = text
+    button.Parent = mainFrame
 
-local spectateCorner = Instance.new("UICorner")
-spectateCorner.CornerRadius = UDim.new(0, 6)
-spectateCorner.Parent = spectateButton
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
 
--- Next Player Button (Dark Gray)
-local nextButton = Instance.new("TextButton")
-nextButton.Name = "NextButton"
-nextButton.Size = UDim2.new(1, -20, 0, 28)
-nextButton.Position = UDim2.new(0, 10, 0, 104)
-nextButton.BackgroundColor3 = Color3.fromRGB(56, 56, 57)
-nextButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-nextButton.TextSize = 14
-nextButton.Font = Enum.Font.SourceSansBold
-nextButton.Text = "Next Player"
-nextButton.Parent = mainFrame
+    return button
+end
 
-local nextCorner = Instance.new("UICorner")
-nextCorner.CornerRadius = UDim.new(0, 6)
-nextCorner.Parent = nextButton
+local spectateButton = createButton(
+    "SpectateButton",
+    "Spectate Name",
+    71,
+    28,
+    Color3.fromRGB(60, 120, 200)
+)
 
--- Status/Target Label
+local nextButton = createButton(
+    "NextButton",
+    "Next Player",
+    104,
+    28,
+    Color3.fromRGB(56, 56, 57)
+)
+
+-- Target Label
 local targetLabel = Instance.new("TextLabel")
 targetLabel.Name = "TargetLabel"
 targetLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -110,149 +118,212 @@ targetLabel.Font = Enum.Font.SourceSans
 targetLabel.TextXAlignment = Enum.TextXAlignment.Center
 targetLabel.Parent = mainFrame
 
--- Stop Spectating Button (Red)
-local stopButton = Instance.new("TextButton")
-stopButton.Name = "StopButton"
-stopButton.Size = UDim2.new(1, -20, 0, 32)
-stopButton.Position = UDim2.new(0, 10, 0, 165)
-stopButton.BackgroundColor3 = Color3.fromRGB(210, 50, 50)
-stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-stopButton.TextSize = 14
-stopButton.Font = Enum.Font.SourceSansBold
-stopButton.Text = "Stop Spectating"
-stopButton.Parent = mainFrame
+local stopButton = createButton(
+    "StopButton",
+    "Stop Spectating",
+    165,
+    32,
+    Color3.fromRGB(210, 50, 50)
+)
 
-local stopCorner = Instance.new("UICorner")
-stopCorner.CornerRadius = UDim.new(0, 6)
-stopCorner.Parent = stopButton
-
--- State variables
+-- Spectate State
 local spectatingPlayer = nil
 local currentIndex = 0
 
--- Helper function to get players excluding local player
 local function getFilteredPlayers()
-	local list = {}
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= player then
-			table.insert(list, p)
-		end
-	end
-	return list
+    local list = {}
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            table.insert(list, p)
+        end
+    end
+
+    return list
 end
 
--- Find player matching typed string (case-insensitive anywhere search)
-local function findPlayer(nameInput)
-	nameInput = string.lower(nameInput)
-	if nameInput == "" then return nil end
-	
-	for _, p in ipairs(getFilteredPlayers()) do
-		local username = string.lower(p.Name)
-		local displayName = string.lower(p.DisplayName)
-		
-		if string.find(username, nameInput, 1, true) or string.find(displayName, nameInput, 1, true) then
-			return p
-		end
-	end
-	return nil
+local function findPlayer(input)
+    input = string.lower(input)
+
+    if input == "" then
+        return nil
+    end
+
+    for _, p in ipairs(getFilteredPlayers()) do
+        local username = string.lower(p.Name)
+        local displayName = string.lower(p.DisplayName)
+
+        if string.find(username, input, 1, true)
+        or string.find(displayName, input, 1, true) then
+            return p
+        end
+    end
+
+    return nil
 end
 
 local function updateSpectate(target)
-	spectatingPlayer = target
-	if spectatingPlayer then
-		targetLabel.Text = "Spectating: " .. spectatingPlayer.Name
-		if spectatingPlayer.Character and spectatingPlayer.Character:FindFirstChildOfClass("Humanoid") then
-			camera.CameraSubject = spectatingPlayer.Character:FindFirstChildOfClass("Humanoid")
-		end
-		-- Sync index with filtered list
-		local filtered = getFilteredPlayers()
-		for i, p in ipairs(filtered) do
-			if p == spectatingPlayer then
-				currentIndex = i
-				break
-			end
-		end
-	else
-		targetLabel.Text = "Player not found"
-	end
+    if not target then
+        targetLabel.Text = "Player not found"
+        return
+    end
+
+    spectatingPlayer = target
+    targetLabel.Text = "Spectating: " .. target.Name
+
+    local character = target.Character
+    local humanoid = character
+        and character:FindFirstChildOfClass("Humanoid")
+
+    if humanoid then
+        camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = humanoid
+    end
+
+    local filtered = getFilteredPlayers()
+
+    for i, p in ipairs(filtered) do
+        if p == target then
+            currentIndex = i
+            break
+        end
+    end
 end
 
--- Connect Spectate Button & Enter Key
+local function stopSpectating()
+    spectatingPlayer = nil
+    currentIndex = 0
+
+    targetLabel.Text = "Spectating: None"
+    nameBox.Text = ""
+
+    local character = player.Character
+    local humanoid = character
+        and character:FindFirstChildOfClass("Humanoid")
+
+    if humanoid then
+        camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = humanoid
+    end
+end
+
+-- Spectate Button
 spectateButton.MouseButton1Click:Connect(function()
-	if nameBox.Text ~= "" then
-		local found = findPlayer(nameBox.Text)
-		updateSpectate(found)
-	end
+    if nameBox.Text ~= "" then
+        updateSpectate(findPlayer(nameBox.Text))
+    end
 end)
 
+-- Enter Key
 nameBox.FocusLost:Connect(function(enterPressed)
-	if enterPressed and nameBox.Text ~= "" then
-		local found = findPlayer(nameBox.Text)
-		updateSpectate(found)
-	end
+    if enterPressed and nameBox.Text ~= "" then
+        updateSpectate(findPlayer(nameBox.Text))
+    end
 end)
 
--- Connect Next Player Button
+-- Next Player
 nextButton.MouseButton1Click:Connect(function()
-	local filtered = getFilteredPlayers()
-	if #filtered == 0 then
-		targetLabel.Text = "No players available"
-		return
-	end
-	currentIndex = currentIndex + 1
-	if currentIndex > #filtered then
-		currentIndex = 1
-	end
-	updateSpectate(filtered[currentIndex])
+    local filtered = getFilteredPlayers()
+
+    if #filtered == 0 then
+        targetLabel.Text = "No players available"
+        return
+    end
+
+    currentIndex += 1
+
+    if currentIndex > #filtered then
+        currentIndex = 1
+    end
+
+    updateSpectate(filtered[currentIndex])
 end)
 
--- Connect Stop Button
-stopButton.MouseButton1Click:Connect(function()
-	spectatingPlayer = nil
-	currentIndex = 0
-	targetLabel.Text = "Spectating: None"
-	nameBox.Text = ""
-	if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-		camera.CameraSubject = player.Character:FindFirstChildOfClass("Humanoid")
-	end
+-- Stop Button
+stopButton.MouseButton1Click:Connect(stopSpectating)
+
+-- Keep Camera Following Target
+local renderConnection
+renderConnection = RunService.RenderStepped:Connect(function()
+    if not screenGui.Parent then
+        renderConnection:Disconnect()
+        return
+    end
+
+    if not spectatingPlayer then
+        return
+    end
+
+    if spectatingPlayer.Parent ~= Players then
+        stopSpectating()
+        return
+    end
+
+    local character = spectatingPlayer.Character
+    local humanoid = character
+        and character:FindFirstChildOfClass("Humanoid")
+
+    camera = workspace.CurrentCamera
+
+    if humanoid and camera
+    and camera.CameraSubject ~= humanoid then
+        camera.CameraType = Enum.CameraType.Custom
+        camera.CameraSubject = humanoid
+    end
 end)
 
--- Keep camera locked onto target if they reset/respawn
-RunService.RenderStepped:Connect(function()
-	if spectatingPlayer and spectatingPlayer.Character then
-		local humanoid = spectatingPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid and camera.CameraSubject ~= humanoid then
-			camera.CameraSubject = humanoid
-		end
-	end
-end)
-
--- Dragging Logic for the Outer Window
+-- Dragging System
 local dragging = false
-local dragStart, startPos
+local dragStart
+local startPos
+local dragInput
 
-mainFrame.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = mainFrame.Position
-		
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+
+    mainFrame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+titleLabel.Active = true
+
+titleLabel.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(
-			startPos.X.Scale, 
-			startPos.X.Offset + delta.X, 
-			startPos.Y.Scale, 
-			startPos.Y.Offset + delta.Y
-		)
-	end
+titleLabel.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+local dragConnection
+dragConnection = UserInputService.InputChanged:Connect(function(input)
+    if not screenGui.Parent then
+        dragConnection:Disconnect()
+        return
+    end
+
+    if dragging and input == dragInput then
+        updateDrag(input)
+    end
 end)
